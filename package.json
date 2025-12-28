@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.89.0",
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
+    "express": "^5.2.1",
     "node-cron": "^4.2.1",
     "telegraf": "^4.16.3"
   }

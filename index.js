@@ -3,6 +3,7 @@ const cron = require('node-cron');
 const  fetchQuote  = require('./helper/getQuote');
 const  supabase  = require('./helper/getSupaBaseClient');
 const   bot  = require('./helper/getTelagramBot.js');
+const express = require('express');
 
 // 2. In-Memory State Tracker
 // Stores what the user is currently doing. Format: { chat_id: 'WAITING_FOR_NAME' }
@@ -164,3 +165,8 @@ console.log('Bot is running...');
 // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+// --- SERVER ---
+
+const app = express();
+app.listen(3000, () => console.log('Server is running on port 3000'));
