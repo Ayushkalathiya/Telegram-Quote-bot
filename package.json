@@ -1,0 +1,21 @@
+{
+  "name": "telegram_chat_bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "node-cron": "^4.2.1",
+    "telegraf": "^4.16.3"
+  }
+}
