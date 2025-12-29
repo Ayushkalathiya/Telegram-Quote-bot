@@ -23,13 +23,18 @@ bot.start((ctx) => {
 // Handle /stop (Sign Out)
 bot.command('stop', async (ctx) => {
     const chatID = ctx.chat.id;
+    console.log(`Stop by  : ${chatID}`);
+    
     try {
         const { error } = await supabase
             .from('subscribers')
             .update({ is_active: false })
             .eq('chat_id', chatID);
 
-        if (error) throw error;
+        if (error){
+            console.log(`Error in update (stop) : ${error} `);
+            throw error;
+        } 
 
         ctx.reply("You have been unsubscribed. 🔕\nYou won't receive daily quotes anymore.\n\nType /start if you want to join again!", {
             reply_markup: { remove_keyboard: true }
@@ -45,6 +50,7 @@ bot.command('stop', async (ctx) => {
 // Helper function to send quote
 const sendQuoteNow = async (ctx) => {
     ctx.sendChatAction('typing');
+    console.log(`Sending Quote : ${ctx}`);
     const quote = await fetchQuote();
     ctx.reply(quote);
 };
@@ -57,6 +63,9 @@ bot.hears('💡 Get Motivation Now', sendQuoteNow);
 bot.on('text', async (ctx) => {
     const chatID = ctx.chat.id;
     const incomingText = ctx.message.text;
+
+    
+    console.log(`Text Received from ${chatID} : ${incomingText}`);
 
     // Check if we are waiting for a name
     if (userStates[chatID] === 'WAITING_FOR_NAME') {
