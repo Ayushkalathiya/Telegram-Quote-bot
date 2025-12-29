@@ -120,6 +120,7 @@ async function broadcastQuote() {
     // Send with Rate Limiting
     for (const sub of subscribers) {
         try {
+            console.log(`Sending to ${sub.chat_id}`);
             await bot.telegram.sendMessage(sub.chat_id, quote);
             await new Promise(resolve => setTimeout(resolve, 50)); // 50ms delay
         } catch (err) {
@@ -140,6 +141,7 @@ async function broadcastQuote() {
 // --- 4. SCHEDULER ---
 
 cron.schedule('0 8 * * *', () => {
+    console.log('Broadcasting quote...');
     broadcastQuote();
 }, {
     timezone: "Asia/Kolkata"
