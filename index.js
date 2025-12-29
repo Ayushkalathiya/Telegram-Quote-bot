@@ -1,30 +1,28 @@
 require('dotenv').config();
 const cron = require('node-cron');
-const  fetchQuote  = require('./helper/getQuote');
-const  supabase  = require('./helper/getSupaBaseClient');
-const   bot  = require('./helper/getTelagramBot.js');
+const fetchQuote = require('./helper/getQuote');
+const supabase = require('./helper/getSupaBaseClient');
+const bot = require('./helper/getTelagramBot.js');
 const express = require('express');
 
-// 2. In-Memory State Tracker
-// Stores what the user is currently doing. Format: { chat_id: 'WAITING_FOR_NAME' }
-const userStates = {};
+// --- 1. SETUP SERVER & STATE ---
 
-// --- BOT COMMANDS ---
+const app = express();
+const userStates = {}; // Stores user state: { chat_id: 'WAITING_FOR_NAME' }
 
-// 1. Handle /start
+// --- 2. BOT COMMANDS ---
+
+// Handle /start
 bot.start((ctx) => {
     const chatID = ctx.chat.id;
-    
     // Set the state for this user to wait for their name
     userStates[chatID] = 'WAITING_FOR_NAME';
-    
     ctx.reply("Welcome! 🚀\nTo subscribe to daily motivation, please enter your name:");
 });
 
-// 2. Handle /stop (Sign Out)
+// Handle /stop (Sign Out)
 bot.command('stop', async (ctx) => {
     const chatID = ctx.chat.id;
-
     try {
         const { error } = await supabase
             .from('subscribers')
@@ -33,7 +31,6 @@ bot.command('stop', async (ctx) => {
 
         if (error) throw error;
 
-        // Remove the keyboard when they stop so the button goes away
         ctx.reply("You have been unsubscribed. 🔕\nYou won't receive daily quotes anymore.\n\nType /start if you want to join again!", {
             reply_markup: { remove_keyboard: true }
         });
@@ -45,81 +42,65 @@ bot.command('stop', async (ctx) => {
     }
 });
 
-// 3. Handle /quote and the Button Click
-// We map both the command and the specific text of the button to the same function
+// Helper function to send quote
 const sendQuoteNow = async (ctx) => {
-    // Show "typing..." status so user knows bot is working
     ctx.sendChatAction('typing');
-
     const quote = await fetchQuote();
     ctx.reply(quote);
 };
 
-// Listen for the command AND the button text
+// Listen for command AND button text
 bot.command('quote', sendQuoteNow);
-bot.hears('💡 Get Motivation Now', sendQuoteNow); 
+bot.hears('💡 Get Motivation Now', sendQuoteNow);
 
-
-// 4. Handle Text Messages (For Name Input)
+// Handle Text Messages (For Name Input)
 bot.on('text', async (ctx) => {
     const chatID = ctx.chat.id;
     const incomingText = ctx.message.text;
 
-    // Check if we are waiting for a name from this user
+    // Check if we are waiting for a name
     if (userStates[chatID] === 'WAITING_FOR_NAME') {
-        
         try {
             // A. Save to Supabase
             const { error } = await supabase
                 .from('subscribers')
-                .upsert({ 
-                    chat_id: chatID, 
-                    first_name: incomingText, 
-                    is_active: true 
+                .upsert({
+                    chat_id: chatID,
+                    first_name: incomingText,
+                    is_active: true
                 }, { onConflict: 'chat_id' });
 
             if (error) throw error;
 
-            // B. Confirm and Clear State
-            delete userStates[chatID]; // Stop waiting
+            // B. Clear State
+            delete userStates[chatID];
 
-            // C. Reply with the Interactive Button attached
+            // C. Reply with Button
             ctx.reply(`Thanks ${incomingText}! You are now subscribed. You will receive quotes daily at 8 AM.`, {
                 reply_markup: {
-                    keyboard: [
-                        [{ text: "💡 Get Motivation Now" }] 
-                    ],
-                    resize_keyboard: true 
+                    keyboard: [[{ text: "💡 Get Motivation Now" }]],
+                    resize_keyboard: true
                 }
             });
 
-            // send quote
+            // Send immediate quote
             sendQuoteNow(ctx);
-
             console.log(`New subscriber: ${incomingText} (${chatID})`);
 
         } catch (err) {
             console.error(err);
             ctx.reply("There was an error saving your name. Please try again.");
         }
-
-    } else {
-        // If they send text but we aren't waiting for anything (and it's not a button click)
-        // We generally ignore random text or send a help message
-        // ctx.reply("I don't understand that command. Try /quote or /stop.");
     }
 });
 
-
-// --- BROADCAST LOGIC ---
+// --- 3. BROADCAST LOGIC ---
 
 async function broadcastQuote() {
     console.log('Starting broadcast...');
-    
-    // A. Get the quote using our helper
     const quote = await fetchQuote();
 
-    // B. Fetch All Active Subscribers
+    // Fetch Active Subscribers
     const { data: subscribers, error } = await supabase
         .from('subscribers')
         .select('chat_id')
@@ -127,13 +108,12 @@ async function broadcastQuote() {
 
     if (error) return console.error('Error fetching subs:', error);
 
-    // C. Send Messages with Rate Limiting
+    // Send with Rate Limiting
     for (const sub of subscribers) {
         try {
             await bot.telegram.sendMessage(sub.chat_id, quote);
             await new Promise(resolve => setTimeout(resolve, 50)); // 50ms delay
         } catch (err) {
-            // Handle Blocked Users (403 Forbidden)
             if (err.response && err.response.error_code === 403) {
                 console.log(`User ${sub.chat_id} blocked the bot. Deactivating...`);
                 await supabase
@@ -148,25 +128,38 @@ async function broadcastQuote() {
     console.log('Broadcast complete.');
 }
 
-// --- SCHEDULER ---
+// --- 4. SCHEDULER ---
 
-// Schedule the Job (8:00 AM Daily)
 cron.schedule('0 8 * * *', () => {
     broadcastQuote();
 }, {
     timezone: "Asia/Kolkata"
 });
 
-// --- LAUNCH ---
+// --- 5. PRODUCTION SERVER SETUP (CRITICAL FIX) ---
 
-bot.launch();
-console.log('Bot is running...');
+// A. Health Check Route (For UptimeRobot to ping)
+app.get('/', (req, res) => {
+    res.send('Bot is alive and running!');
+});
+
+// B. Dynamic Port (Required for Render/Heroku)
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, async () => {
+    console.log(`Server is running on port ${PORT}`);
+
+    try {
+        // C. Clear Old Webhooks & Start Polling
+        // This prevents the "Conflict" error if you ever used webhooks before
+        await bot.telegram.deleteWebhook();
+        bot.launch();
+        console.log('Bot successfully started with Polling!');
+    } catch (error) {
+        console.error('Failed to start bot:', error);
+    }
+});
 
 // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-// --- SERVER ---
-
-const app = express();
-app.listen(3000, () => console.log('Server is running on port 3000'));
